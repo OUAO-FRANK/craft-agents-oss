@@ -251,6 +251,7 @@ export interface SdkPermissionRequest {
   command?: string;
   description: string;
   blockedPath?: string;
+  canAlwaysAllow?: boolean;
 }
 
 export function shouldDeferSdkPermissionToLocalHook(toolName: string): boolean {
@@ -278,12 +279,14 @@ export function createSdkPermissionHandler(
     const description = options.title
       ?? options.description
       ?? (command ? `Execute ${toolName}: ${command}` : `Allow ${toolName}`);
+    const canAlwaysAllow = !options.matchedAskRule && !options.suppressAlwaysAllowRule;
     const allowed = await requestPermission({
       requestId: options.requestId,
       toolName,
       command,
       description,
       ...(blockedPath ? { blockedPath } : {}),
+      ...(canAlwaysAllow ? {} : { canAlwaysAllow: false }),
     });
 
     return allowed
@@ -577,6 +580,7 @@ export class ClaudeAgent extends BaseAgent {
           toolName: request.toolName,
           ...(command ? { command } : {}),
           description: request.description,
+          ...(request.canAlwaysAllow === undefined ? {} : { canAlwaysAllow: request.canAlwaysAllow }),
         });
       } else {
         this.pendingPermissions.delete(request.requestId);
@@ -811,6 +815,7 @@ export class ClaudeAgent extends BaseAgent {
     rememberForMinutes?: number;
     commandHash?: string;
     approvalTtlSeconds?: number;
+    canAlwaysAllow?: boolean;
   }) => void) | null = null;
 
   // Debug callback for status messages

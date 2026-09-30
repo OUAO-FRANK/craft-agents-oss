@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { createSdkPermissionHandler } from '../claude-agent.ts';
+import { createSdkPermissionHandler, type SdkPermissionRequest } from '../claude-agent.ts';
 
 describe('Claude SDK permission handler', () => {
   it('forwards SDK prompts to the host and returns the approval result', async () => {
@@ -78,5 +78,28 @@ describe('Claude SDK permission handler', () => {
       behavior: 'deny',
       message: 'User denied permission',
     });
+  });
+
+  it('marks managed ask-rule prompts as not permanently allow-able', async () => {
+    const requests: SdkPermissionRequest[] = [];
+    const handler = createSdkPermissionHandler(async request => {
+      requests.push(request);
+      return true;
+    });
+
+    await handler('Bash', { command: 'python3 script.py' }, {
+      signal: new AbortController().signal,
+      toolUseID: 'tool-5',
+      requestId: 'request-5',
+      matchedAskRule: { source: 'managed', toolName: 'Bash', ruleContent: 'Bash(python3 *)' },
+    });
+
+    expect(requests).toEqual([{
+      command: 'python3 script.py',
+      description: 'Execute Bash: python3 script.py',
+      requestId: 'request-5',
+      toolName: 'Bash',
+      canAlwaysAllow: false,
+    }]);
   });
 });

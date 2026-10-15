@@ -23,6 +23,7 @@ import type { Workspace } from '../../config/storage.ts';
 import type { SessionConfig as Session } from '../../sessions/storage.ts';
 import type { SourceManager } from '../core/source-manager.ts';
 import type { GuardedModeCheck } from '../core/guarded-mode.ts';
+import type { SubagentModelPicker } from '../core/subagent-model.ts';
 
 // Import AbortReason and RecoveryMessage from core module (single source of truth)
 import { AbortReason, type RecoveryMessage } from '../core/index.ts';
@@ -258,6 +259,9 @@ export interface CoreBackendConfig {
   /** Enable 1M context window for current Opus models. Default: true. Set false to use 200K and conserve usage limits. */
   enable1MContext?: boolean;
 
+  /** Claude: auto-compact window in tokens (config.json `autoCompactWindow`). Unset: the SDK default (the model's full window). */
+  autoCompactWindow?: number;
+
   /**
    * Pre-computed source configurations for initial setup.
    * Passed at construction so backends can set up sources in postInit().
@@ -368,11 +372,25 @@ export interface AgentBackend {
   forceAbort(reason: AbortReason): void;
 
   /**
+   * Stop the running turn but keep the session's background work (background agents, Workflows,
+   * shells) alive, like Esc in Claude Code. Returns false when the backend can't (no live
+   * keep-alive turn); the caller then hard-stops with forceAbort.
+   */
+  stopTurn?(): boolean;
+
+  /**
    * WS2: register a sink for background task events that arrive BETWEEN turns
    * (when no chat() generator is being consumed) under keep-alive mode. Backends
    * without a persistent cross-turn query may leave this unimplemented.
    */
   setBackgroundEventSink?(sink: ((event: AgentEvent) => void) | null): void;
+
+  /**
+   * Stop one background task (shell, agent or workflow) by its task id. Resolves false when there is
+   * no live query to ask, so the task cannot still be running. Backends without background tasks
+   * leave it unimplemented.
+   */
+  stopBackgroundTask?(taskId: string): Promise<boolean>;
 
   /**
    * Interrupt the current turn because control is being handed to the UI.
@@ -616,6 +634,9 @@ export interface AgentBackend {
 
   /** Guarded-mode risk check (decision model): may turn an allowed call into a permission prompt, never the reverse */
   guardedModeCheck: GuardedModeCheck | null;
+
+  /** Subagent model choice (decision model): Claude asks it for Agent calls that name no model; other backends ignore it */
+  subagentModelPicker: SubagentModelPicker | null;
 
   /** Called when agent submits a plan */
   onPlanSubmitted: PlanCallback | null;

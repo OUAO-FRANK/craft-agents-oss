@@ -7283,10 +7283,12 @@ export class SessionManager implements ISessionManager {
         sessionLog.info(`[auth-retry] Resetting summarization client for session ${sessionId}`)
         resetSummarizationClient()
 
-        // 2. Destroy the agent — the new agent's postInit() will refresh auth
-        sessionLog.info(`[auth-retry] Destroying agent for session ${sessionId}`)
-        this.recoverPendingSteers(managed)
-        managed.agent = null
+        // 2. Dispose the agent — the new agent's postInit() will refresh auth.
+        //    Dropping the reference was not enough: the next getOrCreateAgent() overwrites
+        //    managed.mcpPool, orphaning the old pool and every stdio MCP subprocess it owns
+        //    for the life of the server.
+        sessionLog.info(`[auth-retry] Disposing agent for session ${sessionId}`)
+        await this.disposeManagedAgentRuntime(managed, 'auth-retry')
 
         // 3. Retry the message
         const retryMessage = managed.lastSentMessage
